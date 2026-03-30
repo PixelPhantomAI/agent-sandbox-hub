@@ -6,6 +6,7 @@ Provides a client for agents to interact with the Hub API.
 import requests
 import threading
 import time
+from typing import Callable, Optional
 
 
 class AgentClient:
@@ -17,14 +18,33 @@ class AgentClient:
         self._heartbeat_thread = None
         self._heartbeat_running = False
 
-    def register(self) -> dict:
+    def register(self, metadata: Optional[dict] = None) -> dict:
         """Register this agent with the hub."""
+        payload = {
+            "name": self.agent_name,
+            "type": self.agent_type,
+        }
+        if metadata:
+            payload["metadata"] = metadata
         response = self._session.post(
             f"{self.hub_url}/agents/register",
-            json={"name": self.agent_name, "type": self.agent_type}
+            json=payload,
         )
         response.raise_for_status()
         return response.json()
+
+    def ensure_registered(self, metadata: Optional[dict] = None) -> bool:
+        """Ensure this agent is known by the hub.
+
+        If heartbeat succeeds, registration already exists. Otherwise register now.
+        """
+        if self.heartbeat():
+            return True
+        try:
+            self.register(metadata=metadata)
+            return True
+        except Exception:
+            return False
 
     def unregister(self) -> bool:
         """Unregister this agent from the hub."""
@@ -69,6 +89,81 @@ class AgentClient:
         )
         response.raise_for_status()
         return response.json()
+
+    def process_inbox(
+        self,
+        handler: Callable[[dict], None],
+        unread_only: bool = True,
+        auto_ack: bool = True,
+        max_messages: Optional[int] = None,
+    ) -> int:
+        """Pull inbox messages and dispatch each message to handler.
+
+        Returns the number of processed messages.
+        """
+        messages = self.get_messages(unread_only=unread_only)
+        processed = 0
+        for message in messages:
+            handler(message)
+            if auto_ack:
+                self.ack(message["id"])
+            processed += 1
+            if max_messages is not None and processed >= max_messages:
+                break
+        return processed
+
+    def wait_for_messages(
+        self,
+        timeout_seconds: float = 30.0,
+        poll_interval: float = 1.0,
+        unread_only: bool = True,
+    ) -> list:
+        """Poll until messages arrive or timeout expires."""
+        deadline = time.time() + timeout_seconds
+        while time.time() < deadline:
+            messages = self.get_messages(unread_only=unread_only)
+            if messages:
+                return messages
+            time.sleep(poll_interval)
+        return []
+
+    def run_autonomous_loop(
+        self,
+        handler: Callable[[dict], None],
+        poll_interval: float = 2.0,
+        heartbeat_interval: float = 10.0,
+        stop_event: Optional[threading.Event] = None,
+        metadata: Optional[dict] = None,
+        auto_ack: bool = True,
+    ):
+        """Run a collaboration loop suitable for autonomous agents.
+
+        Behavior:
+          - ensures registration is present
+          - sends heartbeat periodically
+          - polls unread inbox and dispatches to handler
+          - optionally acknowledges processed messages
+        """
+        if stop_event is None:
+            stop_event = threading.Event()
+
+        if not self.ensure_registered(metadata=metadata):
+            raise RuntimeError("Failed to register agent with hub")
+
+        next_heartbeat = 0.0
+        while not stop_event.is_set():
+            now = time.time()
+            if now >= next_heartbeat:
+                self.heartbeat()
+                next_heartbeat = now + heartbeat_interval
+
+            try:
+                self.process_inbox(handler, unread_only=True, auto_ack=auto_ack)
+            except Exception:
+                # Keep loop alive for robustness in long-running autonomous agents.
+                pass
+
+            stop_event.wait(poll_interval)
 
     def ack(self, message_id: str) -> bool:
         """Acknowledge message receipt."""

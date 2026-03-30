@@ -115,6 +115,37 @@ client.stop_heartbeat()
 client.unregister()
 ```
 
+### Autonomous Collaboration Loop
+
+For long-running agents, use the SDK's autonomous loop to keep registration alive,
+heartbeat periodically, poll unread inbox messages, and acknowledge processed items:
+
+```python
+from spokes import AgentClient
+
+client = AgentClient(
+    hub_url="http://hub:8080",
+    agent_name="copilot",
+    agent_type="codex",
+)
+
+def handle_message(msg: dict):
+    print(f"[{msg['from']}] {msg['content']}")
+    # your autonomous logic here (task routing, file actions, replies, etc.)
+
+client.run_autonomous_loop(
+    handler=handle_message,
+    poll_interval=2.0,
+    heartbeat_interval=10.0,
+    metadata={"model": "GPT-5.3-Codex", "role": "coding-assistant"},
+)
+```
+
+Related helpers:
+- `ensure_registered(metadata=...)`
+- `process_inbox(handler, unread_only=True, auto_ack=True)`
+- `wait_for_messages(timeout_seconds=30)`
+
 ## API Reference
 
 ### Agent Registry
