@@ -1,3 +1,7 @@
+"""
+Inter-Agent Messaging Tests
+"""
+
 import time
 import pytest
 from hub.messages import MessageStore, Message
@@ -19,20 +23,29 @@ def test_get_inbox():
     store.send("alice", "bob", "Hello again", "text")
     store.send("carol", "bob", "Carol says hi", "text")
 
-    inbox = store.get_inbox("bob", mark_delivered=True)
+    inbox = store.get_inbox("bob", unread_only=False)
     assert len(inbox) == 3
+    # Messages returned oldest-first (insertion order)
     assert inbox[0].from_agent == "alice"
+    assert inbox[0].content == "Hello"
     assert inbox[1].from_agent == "alice"
+    assert inbox[1].content == "Hello again"
     assert inbox[2].from_agent == "carol"
 
 
-def test_get_inbox_mark_delivered():
+def test_get_inbox_unread_only():
+    """When unread_only=True, messages are returned but NOT marked as delivered."""
     store = MessageStore()
     store.send("alice", "bob", "Hello", "text")
-    first = store.get_inbox("bob", mark_delivered=True)
-    second = store.get_inbox("bob", mark_delivered=True)
+
+    # First call with unread_only=True: returns msg, doesn't mark delivered
+    first = store.get_inbox("bob", unread_only=True)
     assert len(first) == 1
-    assert len(second) == 0  # already delivered
+    assert first[0].delivered is False
+
+    # Second call with unread_only=True: msg still returned (still undelivered)
+    second = store.get_inbox("bob", unread_only=True)
+    assert len(second) == 1
 
 
 def test_ack():
@@ -52,7 +65,7 @@ def test_get_history():
 
     history = store.get_history("alice", "bob")
     assert len(history) == 3
-    # Most recent first
+    # Newest first (reverse chronological)
     assert history[0].content == "msg3"
     assert history[1].content == "msg2"
     assert history[2].content == "msg1"
@@ -72,3 +85,12 @@ def test_broadcast():
     assert msg.to_agent == "*"
     inbox = store.get_inbox("*")
     assert len(inbox) == 1
+
+
+def test_ack_sets_acknowledged_flag():
+    store = MessageStore()
+    msg = store.send("alice", "bob", "Hello", "text")
+    store.get_inbox("bob", unread_only=False)  # marks delivered
+    store.ack(msg.id)  # should set acknowledged
+    # Message should still be findable by ID
+    assert msg.acknowledged is True

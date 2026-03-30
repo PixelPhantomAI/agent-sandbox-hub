@@ -5,7 +5,7 @@ Handles message passing between agents with delivery confirmation.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 import threading
 import uuid
 
@@ -42,17 +42,26 @@ class MessageStore:
             self._trim_history()
             return message
 
-    def get_inbox(self, agent_name: str, unread_only: bool = False) -> list[Message]:
-        """Get messages for an agent, optionally unread only."""
+    def get_inbox(
+        self, agent_name: str, unread_only: bool = False
+    ) -> List[Message]:
+        """Get messages for an agent.
+        
+        Args:
+            agent_name: The agent to get messages for.
+            unread_only: If True, only return undelivered messages (don't mark delivered).
+                        If False, return all messages and mark them as delivered.
+        """
         with self._lock:
             inbox = [
                 msg for msg in self._messages.values()
                 if msg.to_agent == agent_name
                 and (not unread_only or not msg.delivered)
             ]
-            for msg in inbox:
-                msg.delivered = True
-            inbox.sort(key=lambda m: m.timestamp, reverse=True)
+            if not unread_only:
+                for msg in inbox:
+                    msg.delivered = True
+            inbox.sort(key=lambda m: m.timestamp)
             return inbox
 
     def ack(self, message_id: str) -> bool:

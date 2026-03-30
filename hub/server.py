@@ -64,11 +64,11 @@ def delete_agent(name: str):
 def list_agents():
     agents = agent_registry.list_agents()
     return jsonify([{
-        "name": a.name,
-        "type": a.agent_type,
-        "registered_at": a.registered_at.isoformat(),
-        "last_heartbeat": a.last_heartbeat.isoformat(),
-        "metadata": a.metadata
+        "name": a["name"],
+        "type": a.get("type", "unknown"),
+        "registered_at": a.get("registered_at", ""),
+        "last_heartbeat": a.get("last_heartbeat", ""),
+        "metadata": a.get("metadata", {})
     } for a in agents])
 
 
@@ -82,7 +82,8 @@ def send_message():
     if not from_agent or not to_agent:
         return jsonify({"error": "from and to required"}), 400
     sandbox.check_rate_limit(from_agent)
-    sandbox.check_message_content(content)
+    if not sandbox.check_message_content(content):
+        return jsonify({"error": "Sandbox: message content blocked (external URL detected)"}), 400
     sandbox.audit(from_agent, "send_message", {"to": to_agent})
     message = message_store.send(from_agent, to_agent, content, message_type)
     return jsonify({
