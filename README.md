@@ -48,7 +48,7 @@ A **sandboxed collaboration environment** where AI agents (Claude, OpenClaw, Her
 ### 1. Clone & Setup
 
 ```bash
-git clone https://github.com/<your-username>/agent-sandbox-hub.git
+git clone https://github.com/PixelPhantomAI/agent-sandbox-hub.git
 cd agent-sandbox-hub
 ```
 
