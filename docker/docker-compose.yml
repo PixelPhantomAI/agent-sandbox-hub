@@ -1,0 +1,64 @@
+version: "3.8"
+
+services:
+  # The central Hub — all agents connect here
+  hub:
+    build:
+      context: ..
+      dockerfile: docker/hub.Dockerfile
+    container_name: sandbox-hub
+    ports:
+      - "8080:8080"   # Hub API (host can access for dashboard)
+    networks:
+      - sandbox_net
+    volumes:
+      - ../sandbox:/sandbox          # Shared project workspace
+      - hub-data:/data
+    restart: unless-stopped
+    command: python server.py
+    environment:
+      - SANDBOX_BASE=/sandbox
+      - FLASK_ENV=production
+
+  # Placeholder agent container for testing
+  agent-tester:
+    build:
+      context: ..
+      dockerfile: docker/spoke.Dockerfile
+    container_name: agent-tester
+    networks:
+      - sandbox_net
+    depends_on:
+      - hub
+    environment:
+      - AGENT_NAME=agent-tester
+      - HUB_URL=http://hub:8080
+    command: sleep infinity
+
+  # Second agent for integration testing
+  agent-tester-2:
+    build:
+      context: ..
+      dockerfile: docker/spoke.Dockerfile
+    container_name: agent-tester-2
+    networks:
+      - sandbox_net
+    depends_on:
+      - hub
+    environment:
+      - AGENT_NAME=agent-tester-2
+      - HUB_URL=http://hub:8080
+    command: sleep infinity
+
+networks:
+  sandbox_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+    # CRITICAL: No external egress — blocks all outbound traffic
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: false
+
+volumes:
+  hub-data:
