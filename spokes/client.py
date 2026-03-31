@@ -256,3 +256,102 @@ class AgentClient:
         self._heartbeat_running = False
         if self._heartbeat_thread:
             self._heartbeat_thread.join(timeout=1)
+
+    # --- Autonomy ---
+
+    def set_autonomy_mode(self, mode: str) -> dict:
+        """Set this agent's autonomy mode (fully_autonomous, advisory, manual)."""
+        response = self._session.post(
+            f"{self.hub_url}/agents/{self.agent_name}/autonomy",
+            json={"mode": mode}
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def set_capabilities(self, tags: list[str], description: str = "") -> dict:
+        """Declare this agent's capability tags."""
+        response = self._session.post(
+            f"{self.hub_url}/agents/{self.agent_name}/capabilities",
+            json={"tags": tags, "description": description}
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def claim_task(self, project_id: str, task_id: str) -> dict:
+        """Attempt to claim a task (validates capability match)."""
+        response = self._session.post(
+            f"{self.hub_url}/projects/{project_id}/tasks/{task_id}/claim",
+            json={"agent": self.agent_name}
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def submit_checkpoint(
+        self,
+        task_id: str = None,
+        state: str = "",
+        rationale: str = "",
+        metadata: dict = None
+    ) -> dict:
+        """Submit a checkpoint — required every N heartbeat cycles."""
+        response = self._session.post(
+            f"{self.hub_url}/agents/{self.agent_name}/checkpoint",
+            json={
+                "task_id": task_id,
+                "state": state,
+                "rationale": rationale,
+                "metadata": metadata or {}
+            }
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_my_tasks(self, project_id: str = None) -> list:
+        """Get tasks assigned to or claimed by this agent."""
+        params = {"agent": self.agent_name}
+        if project_id:
+            params["project_id"] = project_id
+        response = self._session.get(
+            f"{self.hub_url}/tasks",
+            params=params
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def check_revocation(self) -> dict:
+        """Poll for any pending revocation directive."""
+        response = self._session.get(
+            f"{self.hub_url}/agents/{self.agent_name}/revocation"
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def acknowledge_revocation(self, revocation_id: str) -> bool:
+        """Acknowledge a revocation and halt."""
+        response = self._session.post(
+            f"{self.hub_url}/agents/{self.agent_name}/revocation/ack",
+            json={"revocation_id": revocation_id}
+        )
+        return response.status_code == 200
+
+    # --- Task transitions ---
+
+    def transition_task(
+        self,
+        project_id: str,
+        task_id: str,
+        new_status: str,
+        blocked_reason: str = None,
+        blocked_by: str = None
+    ) -> bool:
+        """Transition a task to a new KanBan state."""
+        json_data = {"status": new_status}
+        if blocked_reason:
+            json_data["blocked_reason"] = blocked_reason
+        if blocked_by:
+            json_data["blocked_by"] = blocked_by
+        response = self._session.patch(
+            f"{self.hub_url}/projects/{project_id}/tasks/{task_id}",
+            json=json_data
+        )
+        return response.status_code == 200

@@ -1,40 +1,54 @@
-[![Project: Isolated AI Agent Collaboration](https://img.shields.io/badge/AI%20Agents-Docker%20Sandbox-6e40c9?style=for-the-badge&logo=docker)](https://github.com/PixelPhantomAI/agent-sandbox-hub)
-[![Security: HMAC Auth](https://img.shields.io/badge/Security-HMAC%20Auth%2B%20Rate%20Limiting-22c55e?style=for-the-badge&logo=letsencrypt)](https://github.com/PixelPhantomAI/agent-sandbox-hub#security-model)
-[![Test Status: 65/65 Passing](https://img.shields.io/badge/Tests-65%2F65%20Passing-22c55e?style=for-the-badge&logo=pytest)](https://github.com/PixelPhantomAI/agent-sandbox-hub/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-ef4444?style=for-the-badge&logo=opensource)](LICENSE)
-[![Python: 3.11+](https://img.shields.io/badge/Python-3.11%2B-3b82f6?style=for-the-badge&logo=python)](https://github.com/PixelPhantomAI/agent-sandbox-hub)
-[![Flask: REST API](https://img.shields.io/badge/Flask-REST%20API-000000?style=for-the-badge&logo=flask)](https://github.com/PixelPhantomAI/agent-sandbox-hub#api-reference)
-
 # Agent Sandbox Hub
 
+[![Project: Autonomous Agent Collaboration](https://img.shields.io/badge/AI%20Agents-Docker%20Sandbox-6e40c9?style=for-the-badge&logo=docker)](https://github.com/PixelPhantomAI/agent-sandbox-hub)
+[![Security: HMAC Auth](https://img.shields.io/badge/Security-HMAC%20Auth%2B%20Rate%20Limiting-22c55e?style=for-the-badge&logo=letsencrypt)](https://github.com/PixelPhantomAI/agent-sandbox-hub#security-model)
+[![Tests: 76/76 Passing](https://img.shields.io/badge/Tests-76%2F76%20Passing-22c55e?style=for-the-badge&logo=pytest)](https://github.com/PixelPhantomAI/agent-sandbox-hub#running-tests)
+[![License: MIT](https://img.shields.io/badge/License-MIT-ef4444?style=for-the-badge&logo=opensource)](LICENSE)
+[![Python: 3.11+](https://img.shields.io/badge/Python-3.11%2B-3b82f6?style=for-the-badge&logo=python)](https://github.com/PixelPhantomAI/agent-sandbox-hub#api-reference)
+[![Flask: REST API](https://img.shields.io/badge/Flask-REST%20API%20%2B%20SSE-000000?style=for-the-badge&logo=flask)](https://github.com/PixelPhantomAI/agent-sandbox-hub#api-reference)
 
-A **sandboxed collaboration environment** where AI agents (Claude, OpenClaw, Hermes, Codex, etc.) can communicate, collaborate on projects, and share files — with zero data leakage to the outside world.
+A **sandboxed collaboration environment** for autonomous AI agents (Claude, OpenClaw, Hermes, Codex, etc.) — with network isolation, capability-gated task routing, KanBan project management, and a real-time dashboard.
+
+---
+
+## What's New
+
+This is a full expansion of the original sandbox hub into a complete multi-agent work system:
+
+- **Autonomous task routing** — agents self-assign from a priority queue based on capability tags
+- **3 autonomy modes** — `fully_autonomous`, `advisory`, `manual` — humans can intervene or let agents run freely
+- **Checkpointing + revocation** — agents emit state checkpoints; humans can revoke and halt any agent instantly
+- **Full KanBan** — 6-state task board (backlog→ready→in_progress→in_review→blocked→done) with WIP limits, cycle-time tracking, and swim lanes
+- **Real-time dashboard** — SSE event stream, message flow graph, live feed, KanBan drag-and-drop
+- **76/76 tests passing**
+
+---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     HOST MACHINE                            │
-│                                                             │
-│   ┌─────────────────────────────────────────────────────┐   │
-│   │              Docker sandbox_net (172.28.0.0/16)      │   │
-│   │          [ip masquerading DISABLED — no egress]      │   │
-│   │                                                       │   │
-│   │   ┌──────────────┐      ┌────────────────────────┐   │   │
-│   │   │  sandbox-hub │◄────►│   agent-tester (spoke) │   │   │
-│   │   │  :8080 API   │      └────────────────────────┘   │   │
-│   │   │              │      ┌────────────────────────┐   │   │
-│   │   │  ┗━━━━━━━━━━━┘      │  agent-tester-2 (spoke)│   │   │
-│   │   │                     └────────────────────────┘   │   │
-│   │   └───────────────────────────────────────────────────│   │
-│   │              /sandbox (tmpfs, shared workspace)       │   │
-│   └─────────────────────────────────────────────────────┘   │
-│                                                             │
-│   External internet ──X── (BLOCKED by bridge no-masquerade) │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                        HOST MACHINE                           │
+│                                                              │
+│   ┌──────────────────────────────────────────────────────┐   │
+│   │           Docker sandbox_net (172.28.0.0/16)          │   │
+│   │       [ip masquerading DISABLED — no egress]         │   │
+│   │                                                        │   │
+│   │   ┌────────────┐   ┌─────────────┐  ┌────────────┐  │   │
+│   │   │  sandbox-  │◄─►│ agent-tester │  │  dashboard  │  │   │
+│   │   │  hub:8080  │   └─────────────┘  │  :5173      │  │   │
+│   │   │            │   ┌─────────────┐  └────────────┘  │   │
+│   │   │ SSE /events   │agent-tester-2│                  │   │
+│   │   └────────────┘   └─────────────┘                  │   │
+│   └──────────────────────────────────────────────────────┘   │
+│                                                              │
+│   External internet ──X─ (BLOCKED by bridge no-masquerade)  │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-**Core Principle:** The sandbox is enforced at the network layer. Even if an agent attempts to phone home, it physically cannot reach the outside world.
+**Network isolation** is enforced at the bridge layer — even if an agent attempts to phone home, it physically cannot reach the outside world.
+
+---
 
 ## Security Model
 
@@ -47,33 +61,30 @@ A **sandboxed collaboration environment** where AI agents (Claude, OpenClaw, Her
 | Disk | tmpfs-backed `/sandbox` | No persistent data leakage |
 | Audit | All operations logged with agent identity | Full traceability |
 
+---
+
 ## Quick Start
 
 ### Prerequisites
 - Docker & docker-compose
 - Python 3.11+
 
-### 1. Clone & Setup
+### 1. Clone & Start
 
 ```bash
 git clone https://github.com/PixelPhantomAI/agent-sandbox-hub.git
 cd agent-sandbox-hub
-```
-
-### 2. Start the sandbox
-
-```bash
 cd docker
 docker-compose up -d --build
 ```
 
-### 3. Verify isolation
+### 2. Verify isolation
 
 ```bash
 bash test-isolation.sh
 ```
 
-Expected output:
+Expected:
 ```
 === Testing Sandbox Isolation ===
 [PASS] External egress blocked
@@ -82,6 +93,14 @@ Expected output:
 === ALL ISOLATION TESTS PASSED ===
 ```
 
+### 3. Open the dashboard
+
+```
+http://localhost:5173
+```
+
+---
+
 ## Agent SDK
 
 ### Python Client
@@ -89,62 +108,168 @@ Expected output:
 ```python
 from spokes import AgentClient
 
-# Connect to the hub
-client = AgentClient(
-    hub_url="http://hub:8080",
-    agent_name="claude",
-    agent_type="claude"
-)
-
-# Register
+client = AgentClient("http://hub:8080", "claude", "claude")
 client.register()
 
-# Collaborate
-client.send_message(to="hermes", content="Can you review PR #42?")
-project = client.create_project(name="Q4 Sprint")
-client.join_project(project["id"])
-client.upload_file(project["id"], "feature.py", b"print('hello')")
-task = client.create_task(project["id"], title="Write tests", description="...")
-client.update_task(project["id"], task["id"], status="done")
+# Declare capabilities
+client.set_capabilities(["code", "review", "testing"])
 
-# Heartbeat (background)
+# Set autonomy mode
+client.set_autonomy_mode("fully_autonomous")
+
+# Claim and work on tasks
+client.claim_task(project_id, task_id)
+
+# Submit checkpoints (every N heartbeat cycles)
+client.submit_checkpoint(task_id=task_id, state="implementing feature X", rationale="user story #42")
+
+# Check for revocation directives
+rev = client.check_revocation()
+if rev["pending"]:
+    client.acknowledge_revocation(rev["revocation_id"])
+    # re-register and resume
+
+# KanBan transitions
+client.transition_task(project_id, task_id, "in_review")
+
+# Send messages
+client.send_message(to="hermes", content="PR #42 ready for review")
+
 client.start_heartbeat(interval=10)
-
-# Shutdown
-client.stop_heartbeat()
-client.unregister()
 ```
 
 ### Autonomous Collaboration Loop
 
-For long-running agents, use the SDK's autonomous loop to keep registration alive,
-heartbeat periodically, poll unread inbox messages, and acknowledge processed items:
+For long-running agents, use the SDK's built-in autonomous loop to keep registration alive, send heartbeats, and dispatch incoming messages to a handler:
 
 ```python
 from spokes import AgentClient
 
-client = AgentClient(
-    hub_url="http://hub:8080",
-    agent_name="copilot",
-    agent_type="codex",
-)
+client = AgentClient("http://hub:8080", "copilot", "codex")
 
 def handle_message(msg: dict):
     print(f"[{msg['from']}] {msg['content']}")
-    # your autonomous logic here (task routing, file actions, replies, etc.)
 
 client.run_autonomous_loop(
     handler=handle_message,
     poll_interval=2.0,
     heartbeat_interval=10.0,
-    metadata={"model": "GPT-5.3-Codex", "role": "coding-assistant"},
+    metadata={"role": "coding-assistant"},
 )
 ```
 
 Related helpers:
-- `ensure_registered(metadata=...)`
-- `process_inbox(handler, unread_only=True, auto_ack=True)`
-- `wait_for_messages(timeout_seconds=30)`
+- `ensure_registered(metadata=...)` — ensure registration before starting work
+- `process_inbox(handler, unread_only=True, auto_ack=True)` — pull and dispatch messages
+- `wait_for_messages(timeout_seconds=30)` — block until messages arrive
+
+---
+
+## Autonomy Modes
+
+Agents operate in one of three modes:
+
+| Mode | Behavior |
+|------|----------|
+| `fully_autonomous` | Agents self-assign from ready queue, progress tasks, request reviews — no human approval needed |
+| `advisory` | Agents propose actions; humans must approve before execution |
+| `manual` | Humans assign all tasks; agents only execute what's assigned |
+
+Mode can be set per-agent or globally:
+
+```bash
+# Per-agent
+curl -X POST http://hub:8080/agents/claude/autonomy -d '{"mode":"advisory"}'
+
+# Global
+curl -X POST http://hub:8080/autonomy/set-mode -d '{"mode":"manual"}'
+```
+
+---
+
+## KanBan Task System
+
+### Task States
+
+```
+backlog ──► ready ──► in_progress ──► in_review ──► done
+    │          │             │
+    └──────────┴─────────────┴───► blocked
+```
+
+### WIP Limits
+
+Each project has WIP limits per agent per column. When an agent hits their limit in `in_progress`, they cannot claim additional tasks until a slot opens.
+
+```bash
+# Set WIP limit for in_progress to 5 for a project
+curl -X PATCH http://hub:8080/projects/{id}/wip \
+  -d '{"status":"in_progress","limit":5}'
+```
+
+### Task Claiming
+
+Agents self-assign from the ready queue. Claiming validates:
+1. Task is in `backlog` or `ready` status
+2. Agent's capability tags satisfy the task's `required_capabilities`
+3. Agent has not exceeded their WIP limit in `in_progress`
+
+```bash
+# Get ready queue for an agent (capability-filtered)
+curl "http://hub:8080/projects/{id}/tasks/ready?agent=claude&capabilities=code&capabilities=review"
+```
+
+### Priority
+
+Tasks have `P0` (critical) → `P3` (low) priority. The ready queue is sorted by priority, then creation time.
+
+### Cycle Time Tracking
+
+The Hub records `started_at`, `review_started_at`, and `completed_at` timestamps for each task. Cycle time metrics are available per project:
+
+```bash
+curl http://hub:8080/projects/{id}/metrics
+```
+
+---
+
+## Human Intervention
+
+Humans can intervene at any time regardless of autonomy mode:
+
+```bash
+# Pause an agent (stops accepting new tasks)
+curl -X POST http://hub:8080/agents/claude/pause -d '{"reason":"reviewing output"}'
+
+# Resume
+curl -X POST http://hub:8080/agents/claude/resume
+
+# Revoke (halt + flush + re-register)
+curl -X POST http://hub:8080/agents/claude/revoke -d '{"reason":"policy violation"}'
+```
+
+---
+
+## Real-time Dashboard (SSE)
+
+The dashboard at `http://localhost:5173` connects to the Hub's SSE stream at `GET /events` and receives:
+
+- `message_sent` — agent-to-agent messages
+- `task_transition` — KanBan state changes
+- `task_claimed` / `task_assigned` — task routing events
+- `agent_registered` / `agent_unregistered` — registry changes
+- `agent_paused` / `agent_resumed` / `agent_revoked` — human interventions
+- `checkpoint_submitted` — agent drift-prevention signals
+- `project_created` / `file_uploaded` — project events
+
+### Views
+
+- **KanBan Board** — drag-and-drop tasks across columns, click to transition/assign
+- **Communications** — message flow graph + live event feed
+- **Agent Control** — registry list, per-agent autonomy mode, pause/resume/revoke
+
+---
+>>>>>>> 8134f46 (feat: autonomous KanBan system, SSE dashboard, and human oversight)
 
 ## API Reference
 
@@ -152,19 +277,43 @@ Related helpers:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/agents/register` | Register an agent |
+| POST | `/agents/register` | Register an agent (with capabilities + autonomy mode) |
 | POST | `/agents/{name}/heartbeat` | Send heartbeat |
 | DELETE | `/agents/{name}` | Unregister |
 | GET | `/agents` | List all agents |
+| POST | `/agents/{name}/autonomy` | Set agent's autonomy mode |
+| POST | `/agents/{name}/capabilities` | Set agent's capability tags |
+| POST | `/agents/{name}/pause` | Human: pause agent |
+| POST | `/agents/{name}/resume` | Human: resume agent |
+| POST | `/agents/{name}/revoke` | Human: revoke agent |
+| GET | `/agents/{name}/revocation` | Agent: poll for revocation directive |
+| POST | `/agents/{name}/revocation/ack` | Agent: acknowledge revocation |
+| POST | `/agents/{name}/checkpoint` | Agent: submit checkpoint |
+| GET | `/agents/{name}/checkpoint` | Get agent's latest checkpoint |
+
+### Autonomy
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/autonomy/set-mode` | Set global default autonomy mode |
+| GET | `/revocation/history` | View revocation history |
+
+### Capabilities
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/capabilities` | List all capability profiles |
+| GET | `/capabilities/match?tag=code` | Find agents with a capability tag |
 
 ### Messaging
 
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/messages/send` | Send a message |
-| GET | `/messages/{agent}` | Get undelivered messages |
+| GET | `/messages/{agent}` | Get inbox |
 | POST | `/messages/{id}/ack` | Acknowledge receipt |
 | GET | `/messages/history/{a}/{b}` | Get conversation history |
+| GET | `/messages/graph` | Message flow graph (nodes + edge counts) |
 
 ### Projects
 
@@ -173,12 +322,29 @@ Related helpers:
 | POST | `/projects` | Create a project |
 | GET | `/projects` | List all projects |
 | GET | `/projects/{id}` | Get project details |
-| POST | `/projects/{id}/join` | Join a project |
-| POST | `/projects/{id}/files` | Upload a file (base64) |
-| GET | `/projects/{id}/files/{name}` | Download a file |
-| POST | `/projects/{id}/tasks` | Create a task |
-| PATCH | `/projects/{id}/tasks/{tid}` | Update task status |
 | DELETE | `/projects/{id}` | Delete a project |
+| POST | `/projects/{id}/join` | Agent joins a project |
+| PATCH | `/projects/{id}/wip` | Update WIP limit for a column |
+
+### Tasks
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/projects/{id}/tasks` | Create a task |
+| GET | `/projects/{id}/tasks` | List tasks (filter: status, agent, assigned_to) |
+| GET | `/projects/{id}/tasks/ready` | Get ready queue (capability-filtered) |
+| POST | `/projects/{id}/tasks/{tid}/claim` | Agent self-claims a task |
+| POST | `/projects/{id}/tasks/{tid}/assign` | Human/coordinator assigns task |
+| POST | `/projects/{id}/tasks/{tid}/unassign` | Move task back to backlog |
+| PATCH | `/projects/{id}/tasks/{tid}` | Transition task (status, blocked, review) |
+| POST | `/projects/{id}/tasks/{tid}/reviewers/{name}` | Add a reviewer |
+| GET | `/projects/{id}/metrics` | KanBan metrics (cycle time, throughput) |
+
+### Events
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/events` | SSE event stream (all state changes) |
 
 ### Admin
 
@@ -189,72 +355,13 @@ Related helpers:
 
 ---
 
-## Example: Two Agents Collaborating
-
-**Terminal 1 — Agent Claude:**
-```bash
-docker exec -it agent-tester python -c "
-from spokes import AgentClient
-c = AgentClient('http://hub:8080', 'claude', 'claude')
-c.register()
-c.start_heartbeat()
-print('Claude ready')
-import time; time.sleep(9999)
-"
-```
-
-**Terminal 2 — Agent Hermes:**
-```bash
-docker exec -it agent-tester-2 python -c "
-from spokes import AgentClient
-h = AgentClient('http://hub:8080', 'hermes', 'hermes')
-h.register()
-
-# Get message from Claude
-msgs = h.get_messages()
-print('Inbox:', msgs)
-
-# Create a project
-proj = h.create_project('Joint Research')
-h.join_project(proj['id'])
-h.upload_file(proj['id'], 'notes.md', b'# Research Notes\nDraft 1 by Hermes')
-print('Uploaded notes.md')
-
-# Update task
-task = h.create_task(proj['id'], title='Review draft', assigned_to='claude')
-h.update_task(proj['id'], task['id'], status='in_progress')
-print('Task assigned to Claude')
-"
-```
-
-**Terminal 3 — Claude responds:**
-```bash
-docker exec -it agent-tester python -c "
-from spokes import AgentClient
-c = AgentClient('http://hub:8080', 'claude', 'claude')
-c.register()
-
-# Check tasks assigned to me
-msgs = c.get_messages()
-for m in msgs:
-    print(f'From {m[\"from_agent\"]}: {m[\"content\"]}')
-    c.ack(m[\"id\"])
-"
-```
-
----
-
 ## Running Tests
 
 ```bash
 # Unit tests (no Docker needed)
-cd /root/openclaw_workspace/agent-sandbox-hub
-python -m pytest tests/test_hub.py tests/test_messages.py tests/test_projects.py tests/test_sandbox_isolation.py -v
+python -m pytest tests/ --ignore=tests/test_agent_integration.py -v
 
-# Integration tests (requires Hub server running)
-python -m pytest tests/test_agent_integration.py -v
-
-# Full test suite
+# Full test suite (requires Hub running via docker-compose)
 python -m pytest tests/ -v
 ```
 
@@ -264,29 +371,45 @@ python -m pytest tests/ -v
 
 ```
 agent-sandbox-hub/
-├── hub/                    # Central coordination server
-│   ├── server.py           # Flask REST API
-│   ├── agents.py           # Agent registry & presence
-│   ├── messages.py         # Store-and-forward messaging
-│   ├── projects.py         # Project/file/task management
-│   ├── sandbox.py          # Sandbox enforcement
+├── hub/                      # Central coordination server
+│   ├── server.py             # Flask REST API + SSE
+│   ├── agents.py             # Agent registry + autonomy state
+│   ├── capabilities.py       # Capability registry + matching
+│   ├── autonomy.py           # AutonomyMode, CheckpointSystem, RevocationQueue
+│   ├── events.py             # SSE event emitter
+│   ├── messages.py           # Store-and-forward messaging
+│   ├── projects.py           # Project/KanBan/task management
+│   ├── sandbox.py            # Sandbox enforcement (rate limit, URL block, audit)
 │   └── requirements.txt
-├── spokes/                 # Agent SDK
-│   ├── client.py           # AgentClient SDK
+├── spokes/                   # Agent SDK
+│   ├── client.py             # AgentClient Python SDK
 │   └── requirements.txt
+├── dashboard/                # React dashboard (SSE subscriber)
+│   ├── src/
+│   │   ├── App.jsx          # Main app
+│   │   ├── components/
+│   │   │   ├── AgentList.jsx    # Agent cards + control
+│   │   │   ├── KanbanBoard.jsx  # Drag-and-drop KanBan
+│   │   │   ├── LiveFeed.jsx    # Real-time event feed
+│   │   │   └── MessageGraph.jsx # Agent communication graph
+│   │   └── hooks/
+│   │       └── useSSE.js        # SSE subscription hook
+│   ├── package.json
+│   └── vite.config.js
 ├── docker/
-│   ├── docker-compose.yml  # Isolated sandbox stack
+│   ├── docker-compose.yml   # Hub + dashboard + test agents
 │   ├── hub.Dockerfile
 │   ├── spoke.Dockerfile
-│   ├── sandbox-network.json
-│   └── test-isolation.sh   # Isolation verification
-├── tests/
+│   └── test-isolation.sh
+├── tests/                   # 76 tests
 │   ├── test_hub.py
 │   ├── test_messages.py
 │   ├── test_projects.py
 │   ├── test_sandbox_isolation.py
-│   └── test_agent_integration.py
-├── sandbox/                # Shared workspace (tmpfs)
+│   ├── test_capabilities.py   # NEW
+│   ├── test_autonomy.py        # NEW
+│   └── test_kanban.py          # NEW
+├── sandbox/                 # Shared workspace (tmpfs)
 ├── README.md
 └── LICENSE
 ```
@@ -298,7 +421,7 @@ agent-sandbox-hub/
 1. Fork the repo
 2. Create a feature branch
 3. Add tests for your changes
-4. Ensure all tests pass: `pytest tests/ -v`
+4. Ensure all tests pass: `pytest tests/ --ignore=tests/test_agent_integration.py -v`
 5. Commit with clear messages
 6. Push and open a PR
 
