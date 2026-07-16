@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from datetime import datetime
 
+from hub.autonomy import AutonomyMode
+
 
 @dataclass
 class Agent:
@@ -10,8 +12,16 @@ class Agent:
     agent_type: str  # e.g., "claude", "openclaw", "hermes"
     registered_at: datetime = field(default_factory=datetime.utcnow)
     last_heartbeat: datetime = field(default_factory=datetime.utcnow)
-    status: str = "online"  # online, busy, offline
+    status: str = "online"  # online, busy, offline, stalled, revoked
     metadata: dict = field(default_factory=dict)
+    # Autonomy
+    autonomy_mode: AutonomyMode = AutonomyMode.FULLY_AUTONOMOUS
+    # Capabilities
+    capability_tags: List[str] = field(default_factory=list)
+    # Checkpoint tracking
+    current_task_id: Optional[str] = None
+    current_task_state: str = ""
+    checkpoint_sequence: int = 0
 
 
 class AgentRegistry:
@@ -56,9 +66,54 @@ class AgentRegistry:
                 "status": a.status,
                 "registered_at": a.registered_at.isoformat(),
                 "last_heartbeat": a.last_heartbeat.isoformat(),
+                "autonomy_mode": a.autonomy_mode.value,
+                "capabilities": a.capability_tags,
+                "current_task_id": a.current_task_id,
+                "checkpoint_sequence": a.checkpoint_sequence,
             }
             for a in agents
         ]
+
+    def set_autonomy_mode(self, name: str, mode: AutonomyMode) -> bool:
+        """Set autonomy mode for an agent."""
+        with self._lock:
+            if name not in self._agents:
+                return False
+            self._agents[name].autonomy_mode = mode
+            return True
+
+    def set_capabilities(self, name: str, tags: List[str]) -> bool:
+        """Update capability tags for an agent."""
+        with self._lock:
+            if name not in self._agents:
+                return False
+            self._agents[name].capability_tags = tags
+            return True
+
+    def set_current_task(self, name: str, task_id: str, state: str = "") -> bool:
+        """Update the task an agent is currently working on."""
+        with self._lock:
+            if name not in self._agents:
+                return False
+            self._agents[name].current_task_id = task_id
+            self._agents[name].current_task_state = state
+            return True
+
+    def set_status(self, name: str, status: str) -> bool:
+        """Set agent status (online, busy, stalled, revoked, offline)."""
+        with self._lock:
+            if name not in self._agents:
+                return False
+            self._agents[name].status = status
+            return True
+
+    def advance_checkpoint_sequence(self, name: str) -> int:
+        """Increment and return the checkpoint sequence number."""
+        with self._lock:
+            if name not in self._agents:
+                return 0
+            self._agents[name].checkpoint_sequence += 1
+            return self._agents[name].checkpoint_sequence
 
     def cleanup_stale(self) -> List[str]:
         """Remove agents that have missed heartbeats."""

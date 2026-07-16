@@ -8,17 +8,32 @@ services:
       dockerfile: docker/hub.Dockerfile
     container_name: sandbox-hub
     ports:
-      - "8080:8080"   # Hub API (host can access for dashboard)
+      - "8080:8080"   # Hub API
     networks:
       - sandbox_net
     volumes:
-      - ../sandbox:/sandbox          # Shared project workspace
+      - ../sandbox:/sandbox
       - hub-data:/data
     restart: unless-stopped
     command: python server.py
     environment:
       - SANDBOX_BASE=/sandbox
       - FLASK_ENV=production
+
+  # Dashboard UI
+  dashboard:
+    image: node:22-alpine
+    container_name: sandbox-dashboard
+    working_dir: /app
+    volumes:
+      - ../dashboard:/app
+    ports:
+      - "5173:5173"
+    networks:
+      - sandbox_net
+    depends_on:
+      - hub
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
 
   # Placeholder agent container for testing
   agent-tester:

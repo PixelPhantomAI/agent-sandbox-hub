@@ -8,7 +8,7 @@ import pytest
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from hub.projects import ProjectManager, Task
+from hub.projects import ProjectManager, Task, TaskStatus
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB, must match ProjectManager.MAX_FILE_SIZE
 
@@ -95,11 +95,14 @@ def test_create_and_update_task(pm):
     assert task is not None
     assert task.title == "Write tests"
     assert task.assigned_to == "hermes"
-    assert task.status == "pending"
+    assert task.status == TaskStatus.BACKLOG
 
+    # KanBan requires backlog → ready → in_progress (no direct jump)
+    ok = pm.update_task(project.id, task.id, "ready")
+    assert ok is True
     ok = pm.update_task(project.id, task.id, "in_progress")
     assert ok is True
-    assert pm.get_tasks(project.id)[0].status == "in_progress"
+    assert pm.get_tasks(project.id)[0].status == TaskStatus.IN_PROGRESS
 
 
 def test_create_task_project_not_found(pm):
@@ -124,4 +127,4 @@ def test_task_assignment(pm):
     project = pm.create_project("Test", "claude")
     task = pm.create_task(project.id, "Review PR", "Check code quality", assigned_to="hermes")
     assert task.assigned_to == "hermes"
-    assert task.status == "pending"
+    assert task.status == TaskStatus.BACKLOG
